@@ -1,0 +1,27 @@
+Allow the WG_TUN_FD fd-handoff path to run without CAP_NET_ADMIN: SIOCSIFMTU
+fails as an unprivileged user, so tolerate that when the inherited device
+already carries the requested MTU (tun-helper pre-sets it before dropping
+root). Applies to the CreateTUNFromFile path only; generated against the
+pinned wireguard-go tag and applied with fuzz disabled at build time.
+
+--- a/tun/tun_linux.go
++++ b/tun/tun_linux.go
+@@ -623,10 +623,14 @@
+ 	go tun.routineNetlinkListener()
+ 	go tun.routineHackListener() // cross namespace
+ 
+-	err = tun.setMTU(mtu)
+-	if err != nil {
+-		unix.Close(tun.netlinkSock)
+-		return nil, err
++	// Unprivileged fd-handoff: SIOCSIFMTU requires CAP_NET_ADMIN. Tolerate
++	// the failure when the inherited device already has the requested MTU
++	// (the privileged launcher pre-sets it before dropping root).
++	if err = tun.setMTU(mtu); err != nil {
++		if cur, mtuErr := tun.MTU(); mtuErr != nil || cur != mtu {
++			unix.Close(tun.netlinkSock)
++			return nil, err
++		}
+ 	}
+ 
+ 	return tun, nil
