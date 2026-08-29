@@ -439,6 +439,10 @@ if TEST_WG_MODE=rw $COMPOSE up -d --force-recreate vpn >/dev/null 2>&1; then
     pass "hostname endpoint: tunnel up after one-time resolution"
   else
     fail "hostname endpoint: tunnel did not come up"
+    # shellcheck disable=SC2086
+    $COMPOSE logs vpn 2>/dev/null | tail -n 15
+    ls -l "$TEST_DIR/runtime/wireguard/" || true
+    sed -n '1,20p' "$TEST_DIR/runtime/wireguard/wg0.conf" || true
   fi
 
   if grep -q '^# Endpoint = wg-test-server:51820' "$TEST_DIR/runtime/wireguard/wg0.conf" &&
@@ -471,6 +475,8 @@ if $COMPOSE logs vpn 2>/dev/null | grep -q "read-only, so the resolved endpoint 
   pass "read-only hostname config fails fast, with the resolved IP ready to paste"
 else
   fail "read-only hostname config did not fail with the expected guidance"
+  # shellcheck disable=SC2086
+  $COMPOSE logs vpn 2>/dev/null | tail -n 8
 fi
 # shellcheck disable=SC2086
 $COMPOSE stop vpn >/dev/null 2>&1 || true
