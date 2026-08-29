@@ -1,0 +1,24 @@
+#!/bin/sh
+# PORT_FORWARD_HOOK contract
+# --------------------------
+# The gateway executes this script every time the forwarded port changes
+# (static hot-reload or natpmp reassignment), with the new port as $1.
+#
+# It runs as root INSIDE the gateway container, which shares its network
+# namespace with your jailed services — so their localhost APIs are
+# reachable at 127.0.0.1 even when they require no external auth for
+# loopback. The gateway's own firewall state is already updated before the
+# hook runs; your job is only to tell your application.
+#
+# Keep it fast and idempotent; a non-zero exit is logged and retried on the
+# next sync cycle.
+set -eu
+
+PORT="$1"
+
+echo "update-port hook: forwarded port is now ${PORT}"
+
+# Template — push the port into a jailed service's API:
+# curl -fsS --max-time 5 \
+#   --data "port=${PORT}" \
+#   "http://127.0.0.1:8080/api/settings/listen-port"

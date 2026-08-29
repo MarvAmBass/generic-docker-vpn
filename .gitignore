@@ -1,0 +1,9 @@
+# Secrets and per-deployment state never enter the repo: config/ is
+# default-deny with an explicit allow for the example only.
+.env
+
+config/*
+!config/wg0.conf.example
+
+*.log
+.DS_Store

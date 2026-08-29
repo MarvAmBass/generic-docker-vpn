@@ -1,0 +1,69 @@
+# Example 03 — provider-forwarded port (static mode + runtime hot-reload).
+#
+# Some VPN providers forward an inbound port to you. The gateway keeps three
+# things in sync: the provider's port, its own firewall accept-set, and —
+# via an optional hook script — whatever service needs to know the port.
+#
+#   docker compose up -d
+#   docker compose logs -f listener     # then connect from outside via the
+#                                       # provider's forwarded port
+#
+# Change the port at RUNTIME, no restart:
+#   echo 51413 > ../../config/forwarded_port
+# (the gateway re-reads the file continuously; the file wins over the env).
+#
+# natpmp mode (providers that assign ports dynamically) is the same compose
+# with PORT_FORWARD_MODE=natpmp and no FORWARDED_PORT — the gateway
+# negotiates, renews, and follows changes on its own.
+
+services:
+  vpn:
+    build: ../../image
+    restart: unless-stopped
+    init: true
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: "1"
+      net.ipv6.conf.default.disable_ipv6: "1"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      KILLSWITCH: ${KILLSWITCH:-on}
+      VPN_ENDPOINT_IP: ${VPN_ENDPOINT_IP:?set VPN_ENDPOINT_IP}
+      VPN_ENDPOINT_PORT: ${VPN_ENDPOINT_PORT:?set VPN_ENDPOINT_PORT}
+      VPN_DNS: ${VPN_DNS:-1.1.1.1}
+      PORT_FORWARD_MODE: static
+      FORWARDED_PORT: ${FORWARDED_PORT:-51413}
+      # Optional: run a script every time the port changes (see
+      # ../hooks/update-port.sh.example for the contract).
+      PORT_FORWARD_HOOK: /hooks/update-port.sh
+    volumes:
+      - ../../config:/etc/wireguard:ro
+      - ../hooks/update-port.sh.example:/hooks/update-port.sh:ro
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Minimal jailed service listening on the forwarded port: prints a line
+  # for every inbound connection that arrives through the tunnel.
+  listener:
+    image: docker.io/library/alpine:latest
+    restart: unless-stopped
+    network_mode: "service:vpn"
+    depends_on:
+      vpn:
+        condition: service_healthy
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    command: >
+      sh -c 'PORT="${FORWARDED_PORT:-51413}";
+      echo "listening on forwarded port $$PORT";
+      while :; do echo "hello from behind the VPN" | nc -l -p "$$PORT";
+      echo "inbound connection at $$(date)"; done'

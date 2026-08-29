@@ -1,0 +1,70 @@
+# Example 02 — the tunnel as an HTTP proxy.
+#
+# No jailed app at all: the gateway exposes its tunnel as an HTTP proxy
+# (VPN_HTTP_PROXY=on), so apps OUTSIDE the namespace can route selected
+# traffic through the VPN while keeping their normal network identity.
+# Proxy egress is kill-switched like everything else in the namespace.
+#
+#   docker compose up -d vpn
+#   docker compose run --rm demo        # prints your VPN exit IP
+#
+# To use it from your LAN, uncomment the lan-gateway service below.
+
+services:
+  vpn:
+    build: ../../image
+    restart: unless-stopped
+    init: true
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: "1"
+      net.ipv6.conf.default.disable_ipv6: "1"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      KILLSWITCH: ${KILLSWITCH:-on}
+      VPN_ENDPOINT_IP: ${VPN_ENDPOINT_IP:?set VPN_ENDPOINT_IP}
+      VPN_ENDPOINT_PORT: ${VPN_ENDPOINT_PORT:?set VPN_ENDPOINT_PORT}
+      VPN_DNS: ${VPN_DNS:-1.1.1.1}
+      VPN_HTTP_PROXY: "on"
+      VPN_HTTP_PROXY_PORT: "8888"
+      # Accept the proxy port from the bridge (explicit; harmless if the
+      # image already accepts its own proxy port).
+      VPN_ACCEPT_TCP: "8888"
+    volumes:
+      - ../../config:/etc/wireguard:ro
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # One-shot demo: fetch your public IP through the tunnel proxy.
+  demo:
+    image: docker.io/curlimages/curl:latest
+    restart: "no"
+    depends_on:
+      vpn:
+        condition: service_healthy
+    command: ["-x", "http://vpn:8888", "-sS", "https://api.ipify.org"]
+
+  # Optional: publish the proxy to your machine/LAN.
+  # lan-gateway:
+  #   build: ../../lan-gateway
+  #   restart: unless-stopped
+  #   init: true
+  #   depends_on:
+  #     vpn:
+  #       condition: service_healthy
+  #   environment:
+  #     LISTEN_PORT: "8888"
+  #     TARGET_HOST: vpn
+  #     TARGET_PORT: "8888"
+  #   ports:
+  #     - "${LAN_BIND_IP:-127.0.0.1}:8888:8888"
+  #   security_opt:
+  #     - no-new-privileges:true

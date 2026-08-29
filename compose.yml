@@ -1,0 +1,134 @@
+# generic-docker-vpn — flagship quickstart (example 01):
+# SearXNG, jailed inside a kill-switched VPN network namespace.
+#
+#   ./config/wg0.conf   your provider's WireGuard config (see wg0.conf.example)
+#   .env                VPN_ENDPOINT_IP/PORT + SEARXNG_SECRET (see .env.example)
+#   docker compose up -d
+#   open http://127.0.0.1:8080
+#
+# The point this file demonstrates: the jailed services are UNMODIFIED
+# upstream images. The jail is the vpn service's network namespace plus its
+# fail-closed nftables ruleset — anything that joins via
+# `network_mode: service:vpn` can only reach the Internet through the tunnel,
+# and reaches it not at all when the tunnel is down.
+#
+# Note: some search engines throttle or captcha VPN exit IPs. That is
+# expected and not a bug in this stack; plenty of engines work fine.
+
+services:
+  # ---------------------------------------------------------------------
+  # The product: VPN gateway with kill switch (userspace WireGuard).
+  # Everything else in this file is an example consumer.
+  # ---------------------------------------------------------------------
+  vpn:
+    build: ./image
+    restart: unless-stopped
+    init: true
+    cap_add:
+      - NET_ADMIN            # nftables + interface setup (setup phase only)
+    devices:
+      - /dev/net/tun:/dev/net/tun   # userspace WireGuard; no kernel module needed
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: "1"
+      net.ipv6.conf.default.disable_ipv6: "1"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      KILLSWITCH: ${KILLSWITCH:-on}
+      VPN_ENDPOINT_IP: ${VPN_ENDPOINT_IP:?set VPN_ENDPOINT_IP in .env (your provider endpoint)}
+      VPN_ENDPOINT_PORT: ${VPN_ENDPOINT_PORT:?set VPN_ENDPOINT_PORT in .env}
+      VPN_DNS: ${VPN_DNS:-1.1.1.1}
+      # Ports the LAN side may reach inside the namespace (from each
+      # connected bridge's own subnet only): the SearXNG UI.
+      VPN_ACCEPT_TCP: "8080"
+      HEALTHCHECK_URL: ${HEALTHCHECK_URL:-https://1.1.1.1}
+    volumes:
+      # Directory mount so runtime-writable extras (e.g. forwarded_port in
+      # the port-forwarding example) work without a restart.
+      - ./config:/etc/wireguard:ro
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ---------------------------------------------------------------------
+  # SearXNG — official upstream image, completely unmodified.
+  # No network of its own: it lives inside the vpn namespace.
+  # ---------------------------------------------------------------------
+  searxng:
+    image: docker.io/searxng/searxng:latest
+    restart: unless-stopped
+    network_mode: "service:vpn"
+    depends_on:
+      vpn:
+        condition: service_healthy
+    environment:
+      # Generate once: openssl rand -hex 32
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET in .env (openssl rand -hex 32)}
+      # Set to the URL you actually browse to (LAN IP if you bind there).
+      SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-http://127.0.0.1:8080/}
+      # Rate limiter storage; valkey shares this namespace -> localhost.
+      SEARXNG_VALKEY_URL: valkey://127.0.0.1:6379/0
+    volumes:
+      - searxng-config:/etc/searxng
+      - searxng-cache:/var/cache/searxng
+    # Hardening from the official deployment docs.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+
+  # ---------------------------------------------------------------------
+  # Valkey (SearXNG's limiter store) — also jailed; localhost-only, sealed.
+  # It needs no Internet at all, and inside the namespace it gets none it
+  # isn't entitled to.
+  # ---------------------------------------------------------------------
+  valkey:
+    image: docker.io/valkey/valkey:8-alpine
+    restart: unless-stopped
+    network_mode: "service:vpn"
+    depends_on:
+      vpn:
+        condition: service_healthy
+    command: valkey-server --save 30 1 --loglevel warning
+    volumes:
+      - valkey-data:/data
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # ---------------------------------------------------------------------
+  # LAN gateway — the ONLY published entry point. Jailed services have no
+  # bridge identity, so this tiny relay makes the UI reachable from your
+  # machine/LAN. Default bind is loopback; set LAN_BIND_IP to a LAN address
+  # to share it (put real auth/TLS in front before doing that).
+  # ---------------------------------------------------------------------
+  lan-gateway:
+    build: ./lan-gateway
+    restart: unless-stopped
+    init: true
+    depends_on:
+      vpn:
+        condition: service_healthy
+      searxng:
+        condition: service_started
+    environment:
+      LISTEN_PORT: "8080"
+      TARGET_HOST: vpn
+      TARGET_PORT: "8080"
+    ports:
+      - "${LAN_BIND_IP:-127.0.0.1}:${SEARXNG_LAN_PORT:-8080}:8080"
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  searxng-config:
+  searxng-cache:
+  valkey-data:
