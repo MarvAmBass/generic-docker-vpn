@@ -420,6 +420,9 @@ fi
 
 # --- Hostname endpoint: resolved once and pinned into a writable config ---
 
+# rm first: the previous phase's in-container rewrite leaves the file
+# root-owned on Linux hosts, so plain shell truncation would fail.
+rm -f "$TEST_DIR/runtime/wireguard/wg0.conf"
 sed 's|^Endpoint.*|Endpoint = wg-test-server:51820|' \
   "$TEST_DIR/fixtures/vpn-client/wg0.conf" >"$TEST_DIR/runtime/wireguard/wg0.conf"
 
@@ -463,6 +466,9 @@ fi
 
 # --- Hostname endpoint on a READ-ONLY config: must fail fast and loud ---
 
+# rm first: the previous phase's in-container rewrite leaves the file
+# root-owned on Linux hosts, so plain shell truncation would fail.
+rm -f "$TEST_DIR/runtime/wireguard/wg0.conf"
 sed 's|^Endpoint.*|Endpoint = wg-test-server:51820|' \
   "$TEST_DIR/fixtures/vpn-client/wg0.conf" >"$TEST_DIR/runtime/wireguard/wg0.conf"
 
