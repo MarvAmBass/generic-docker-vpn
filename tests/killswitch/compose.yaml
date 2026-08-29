@@ -1,0 +1,102 @@
+# Self-contained kill-switch test harness. Everything is test-scoped
+# (vpnks-* names, dedicated subnets); nothing touches production stacks.
+name: vpnks
+
+services:
+  vpn:
+    build: ../../image
+    image: vpnks-vpn
+    container_name: vpnks-vpn
+    restart: unless-stopped
+    init: true
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: "1"
+      net.ipv6.conf.default.disable_ipv6: "1"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      KILLSWITCH: ${TEST_KILLSWITCH:-on}
+      VPN_ENDPOINT_IP: 10.77.10.200
+      VPN_ENDPOINT_PORT: "51820"
+      VPN_DNS: 10.66.0.1
+      VPN_ACCEPT_TCP: "8080"
+      PORT_FORWARD_MODE: static
+      FORWARDED_PORT: "51413"
+      PORT_FORWARD_HOOK: /hooks/record-port.sh
+      HEALTHCHECK_URL: http://10.77.20.80/
+    volumes:
+      # runtime/wireguard is seeded from fixtures/ by run-test.sh so the
+      # hot-reload test can write forwarded_port without dirtying fixtures.
+      - ./runtime/wireguard:/etc/wireguard:ro
+      - ./fixtures/hooks:/hooks:ro
+    networks:
+      - lan
+    # Healthcheck comes from the image's own HEALTHCHECK definition.
+    depends_on:
+      wg-test-server:
+        condition: service_started
+
+  # Jailed stand-in service: any unmodified container works the same way.
+  app:
+    build: ./docker/httpd
+    image: vpnks-app
+    container_name: vpnks-app
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    network_mode: "service:vpn"
+    command: sh -c "mkdir -p /www && echo jailed-app-ok >/www/index.html && httpd -f -p 8080 -h /www"
+    depends_on:
+      vpn:
+        condition: service_healthy
+
+  wg-test-server:
+    build: ./docker/wg-test-server
+    image: vpnks-gateway
+    container_name: vpnks-gateway
+    restart: unless-stopped
+    init: true
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    environment:
+      SERVER_PRIVATE_KEY: 2O3D+ktgB5eLg7SwTbd19eegbWyMPc2acs7PHSNBi0A=
+      CLIENT_PUBLIC_KEY: LpH8P3T62e02fwqCwLbEbQ/DmYn0FzYjFf71OTfLXGE=
+      WG_PORT: "51820"
+    networks:
+      lan:
+        ipv4_address: 10.77.10.200
+      fakewan:
+        ipv4_address: 10.77.20.2
+
+  fake-internet:
+    build: ./docker/httpd
+    image: vpnks-fakenet
+    container_name: vpnks-fakenet
+    restart: unless-stopped
+    init: true
+    command: sh -c "mkdir -p /www && echo fake-internet-ok >/www/index.html && httpd -f -p 80 -h /www"
+    networks:
+      fakewan:
+        ipv4_address: 10.77.20.80
+
+networks:
+  lan:
+    name: vpnks-lan
+    driver: bridge
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: 10.77.10.0/24
+  fakewan:
+    name: vpnks-fakewan
+    driver: bridge
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: 10.77.20.0/24
