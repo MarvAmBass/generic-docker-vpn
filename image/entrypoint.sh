@@ -60,7 +60,9 @@ if [ -z "$VPN_ENDPOINT_IP" ] || [ -z "$VPN_ENDPOINT_PORT" ]; then
       # config is writable, the hostname line is commented out and the
       # literal IP written beneath it, so every later boot does zero DNS.
       echo "vpn-entrypoint: Endpoint '$conf_ip' is a hostname; resolving once (single boot-time query via the host resolver)" >&2
-      resolved="$(nslookup "$conf_ip" 2>/dev/null | awk '/^Address/ { if ($2 !~ /:/) { print $2; exit } }')"
+      # drill queries the literal name (no search-domain games, unlike
+      # busybox nslookup) via the container's boot-time resolver.
+      resolved="$(drill "$conf_ip" A 2>/dev/null | awk '$1 != ";;" && $3 == "IN" && $4 == "A" { print $5; exit }')"
       case "$resolved" in
         *[!0-9.]*|"") fail "could not resolve Endpoint hostname '$conf_ip' to an IPv4 address. Resolve it yourself and either put the IP in $WG_CONFIG or set VPN_ENDPOINT_IP/VPN_ENDPOINT_PORT." ;;
       esac
