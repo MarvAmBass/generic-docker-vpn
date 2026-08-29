@@ -20,8 +20,8 @@ services:
       - no-new-privileges:true
     environment:
       KILLSWITCH: ${TEST_KILLSWITCH:-on}
-      VPN_ENDPOINT_IP: 10.77.10.200
-      VPN_ENDPOINT_PORT: "51820"
+      # Endpoint intentionally NOT set: the suite exercises the
+      # derived-from-wg0.conf path (env override is the same code path).
       VPN_DNS: 10.66.0.1
       VPN_ACCEPT_TCP: "8080"
       PORT_FORWARD_MODE: static

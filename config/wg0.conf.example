@@ -7,8 +7,9 @@
 #   PostDown are parsed or ignored by the entrypoint) — routing, DNS, and
 #   firewalling are managed by the gateway itself, so a stock provider
 #   config works unmodified.
-# - Prefer a numeric Endpoint IP, and mirror it in VPN_ENDPOINT_IP /
-#   VPN_ENDPOINT_PORT: the kill switch only permits encrypted UDP to that
+# - Use a numeric Endpoint IP (the gateway reads it from this line
+#   automatically; env VPN_ENDPOINT_IP/PORT only overrides). Hostnames are
+#   rejected — the kill switch only permits encrypted UDP to that
 #   exact address, and no DNS lookup is needed during startup.
 
 [Interface]

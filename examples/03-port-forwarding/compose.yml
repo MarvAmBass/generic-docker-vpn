@@ -32,8 +32,9 @@ services:
       - no-new-privileges:true
     environment:
       KILLSWITCH: ${KILLSWITCH:-on}
-      VPN_ENDPOINT_IP: ${VPN_ENDPOINT_IP:?set VPN_ENDPOINT_IP}
-      VPN_ENDPOINT_PORT: ${VPN_ENDPOINT_PORT:?set VPN_ENDPOINT_PORT}
+      # Endpoint is derived from the mounted wg0.conf; override via env if needed.
+      VPN_ENDPOINT_IP: ${VPN_ENDPOINT_IP:-}
+      VPN_ENDPOINT_PORT: ${VPN_ENDPOINT_PORT:-}
       VPN_DNS: ${VPN_DNS:-1.1.1.1}
       PORT_FORWARD_MODE: static
       FORWARDED_PORT: ${FORWARDED_PORT:-51413}

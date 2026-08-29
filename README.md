@@ -54,7 +54,8 @@ git clone https://github.com/MarvAmBass/generic-docker-vpn.git
 cd generic-docker-vpn
 cp config/wg0.conf.example config/wg0.conf
 # paste the WireGuard config from your VPN provider into config/wg0.conf,
-# then set VPN_ENDPOINT_IP / VPN_ENDPOINT_PORT to match its Endpoint line
+# the endpoint is read from the config's Endpoint line automatically
+# (numeric IP:PORT; set VPN_ENDPOINT_IP/PORT only to override)
 docker compose up -d --build
 open http://127.0.0.1:8080
 ```
@@ -87,8 +88,8 @@ no VPN account, no real network access needed.
 | Variable | Default | Meaning |
 |---|---|---|
 | `KILLSWITCH` | `on` | `on` or `off` (exact match). See below. |
-| `VPN_ENDPOINT_IP` | *required* | Numeric IPv4 of your provider endpoint (matches the `Endpoint` in your `wg0.conf`) |
-| `VPN_ENDPOINT_PORT` | *required* | Endpoint UDP port |
+| `VPN_ENDPOINT_IP` | *derived* | Numeric IPv4 of your provider endpoint. Optional: derived from the `Endpoint` line in `wg0.conf`; set to override. Hostname endpoints are rejected either way (no DNS outside the tunnel) |
+| `VPN_ENDPOINT_PORT` | *derived* | Endpoint UDP port (same derivation/override rules) |
 | `VPN_INTERFACE` | `wg0` | Tunnel interface / config file name (`/etc/wireguard/<name>.conf`) |
 | `VPN_DNS` | `1.1.1.1` | Resolver used inside the namespace, reached through the tunnel |
 | `VPN_ACCEPT_TCP` | empty | Comma-separated TCP ports accepted inbound on each bridge, from that bridge's own subnet only |
@@ -171,8 +172,7 @@ services:
     volumes:
       - ./config:/etc/wireguard:ro
     environment:
-      VPN_ENDPOINT_IP: "203.0.113.10"
-      VPN_ENDPOINT_PORT: "51820"
+      # endpoint derived from wg0.conf; set VPN_ENDPOINT_IP/PORT to override
       VPN_ACCEPT_TCP: "8080"
     healthcheck:
       test: ["CMD", "/usr/local/bin/healthcheck"]

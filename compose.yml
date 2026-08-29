@@ -2,7 +2,7 @@
 # SearXNG, jailed inside a kill-switched VPN network namespace.
 #
 #   ./config/wg0.conf   your provider's WireGuard config (see wg0.conf.example)
-#   .env                VPN_ENDPOINT_IP/PORT + SEARXNG_SECRET (see .env.example)
+#   .env                SEARXNG_SECRET (see .env.example)
 #   docker compose up -d
 #   open http://127.0.0.1:8080
 #
@@ -35,8 +35,9 @@ services:
       - no-new-privileges:true
     environment:
       KILLSWITCH: ${KILLSWITCH:-on}
-      VPN_ENDPOINT_IP: ${VPN_ENDPOINT_IP:?set VPN_ENDPOINT_IP in .env (your provider endpoint)}
-      VPN_ENDPOINT_PORT: ${VPN_ENDPOINT_PORT:?set VPN_ENDPOINT_PORT in .env}
+      # Endpoint is derived from config/wg0.conf; these override if set.
+      VPN_ENDPOINT_IP: ${VPN_ENDPOINT_IP:-}
+      VPN_ENDPOINT_PORT: ${VPN_ENDPOINT_PORT:-}
       VPN_DNS: ${VPN_DNS:-1.1.1.1}
       # Ports the LAN side may reach inside the namespace (from each
       # connected bridge's own subnet only): the SearXNG UI.

@@ -14,8 +14,8 @@ set -eu
 KILLSWITCH="${KILLSWITCH:-on}"
 VPN_INTERFACE="${VPN_INTERFACE:-wg0}"
 WG_CONFIG="/etc/wireguard/${VPN_INTERFACE}.conf"
-VPN_ENDPOINT_IP="${VPN_ENDPOINT_IP:?VPN_ENDPOINT_IP is required}"
-VPN_ENDPOINT_PORT="${VPN_ENDPOINT_PORT:?VPN_ENDPOINT_PORT is required}"
+VPN_ENDPOINT_IP="${VPN_ENDPOINT_IP:-}"
+VPN_ENDPOINT_PORT="${VPN_ENDPOINT_PORT:-}"
 VPN_DNS="${VPN_DNS:-1.1.1.1}"
 VPN_ACCEPT_TCP="${VPN_ACCEPT_TCP:-}"
 VPN_ACCEPT_UDP="${VPN_ACCEPT_UDP:-}"
@@ -42,12 +42,29 @@ esac
 
 [ -r "$WG_CONFIG" ] || fail "missing readable $WG_CONFIG"
 
+# Endpoint source of truth: env wins when set; otherwise it is derived from
+# the config's own Endpoint= line, so dropping in a new provider config and
+# restarting just works. Hostname endpoints are rejected either way — this
+# gateway never performs DNS outside the tunnel, by design.
+if [ -z "$VPN_ENDPOINT_IP" ] || [ -z "$VPN_ENDPOINT_PORT" ]; then
+  conf_ep="$(awk -F= '/^Endpoint[ \t]*=/ { gsub(/[ \t]/, "", $2); print $2; exit }' "$WG_CONFIG")"
+  [ -n "$conf_ep" ] || fail "no Endpoint in $WG_CONFIG and VPN_ENDPOINT_IP/VPN_ENDPOINT_PORT not set"
+  conf_ip="${conf_ep%:*}"
+  conf_port="${conf_ep##*:}"
+  [ "$conf_ip" != "$conf_ep" ] || fail "Endpoint in $WG_CONFIG has no port (expected IP:PORT)"
+  case "$conf_ip" in
+    *[!0-9.]*) fail "Endpoint host in $WG_CONFIG is '$conf_ip', not a numeric IPv4 address. This gateway performs no DNS outside the tunnel by design — resolve the hostname yourself and either put the IP in the config or set VPN_ENDPOINT_IP/VPN_ENDPOINT_PORT." ;;
+  esac
+  VPN_ENDPOINT_IP="${VPN_ENDPOINT_IP:-$conf_ip}"
+  VPN_ENDPOINT_PORT="${VPN_ENDPOINT_PORT:-$conf_port}"
+fi
+
 case "$VPN_ENDPOINT_IP" in
-  *[!0-9.]*|"") fail "VPN_ENDPOINT_IP must be a numeric IPv4 address" ;;
+  *[!0-9.]*|"") fail "VPN_ENDPOINT_IP must be a numeric IPv4 address (set it or provide a numeric Endpoint in $WG_CONFIG)" ;;
 esac
 
 case "$VPN_ENDPOINT_PORT" in
-  *[!0-9]*|"") fail "VPN_ENDPOINT_PORT must be numeric" ;;
+  *[!0-9]*|"") fail "VPN_ENDPOINT_PORT must be numeric (set it or provide a numeric Endpoint in $WG_CONFIG)" ;;
 esac
 
 case "$FORWARDED_PORT" in

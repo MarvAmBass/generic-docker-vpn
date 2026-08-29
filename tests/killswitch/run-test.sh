@@ -147,6 +147,13 @@ else
 fi
 
 # On-link target: the connected route exists, so ONLY the firewall can block.
+derived_ep="$(run_vpn cat /run/vpn/endpoint_ip 2>/dev/null | tr -d '\r\n')"
+if [ "$derived_ep" = "10.77.10.200" ]; then
+  pass "endpoint derived from wg0.conf Endpoint= (no env vars required)"
+else
+  fail "endpoint not derived from wg0.conf (got: '$derived_ep')"
+fi
+
 if run_vpn curl -fsS4 --max-time 5 "$LAN_URL" >/dev/null 2>&1; then
   fail "LAN on-link target reachable (firewall not enforcing egress)"
 else
