@@ -10,7 +10,9 @@
 # - Use a numeric Endpoint IP (the gateway reads it from this line
 #   automatically; env VPN_ENDPOINT_IP/PORT only overrides). Hostnames are
 #   rejected — the kill switch only permits encrypted UDP to that
-#   exact address, and no DNS lookup is needed during startup.
+#   exact address. A hostname endpoint also works: it is resolved once at
+#   first boot and pinned into this file as a literal IP (the hostname line
+#   is kept, commented) — requires the config mount to be writable.
 
 [Interface]
 PrivateKey = REPLACE_WITH_YOUR_PRIVATE_KEY

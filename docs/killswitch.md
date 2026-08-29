@@ -58,6 +58,13 @@ at dstnat priority (-100). A drop in the normal filter chain (priority 0)
 runs *after* that rewrite and never matches `dport 53`. Raw runs first and
 sees the original destination.
 
+One documented exception: a hostname `Endpoint=` in `wg0.conf` is resolved
+exactly once, at first boot, *before* the kill switch exists — the same
+moment the container has ordinary network access anyway — and the result is
+pinned into the config as a literal IP (hostname kept, commented out). Every
+subsequent boot performs zero DNS. If the config is read-only, the gateway
+refuses to start rather than re-resolving on every boot.
+
 The resolver's address is discovered from `/etc/resolv.conf` at runtime,
 never hardcoded — it is an engine-provided detail, not a constant.
 

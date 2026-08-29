@@ -53,7 +53,38 @@ if [ -z "$VPN_ENDPOINT_IP" ] || [ -z "$VPN_ENDPOINT_PORT" ]; then
   conf_port="${conf_ep##*:}"
   [ "$conf_ip" != "$conf_ep" ] || fail "Endpoint in $WG_CONFIG has no port (expected IP:PORT)"
   case "$conf_ip" in
-    *[!0-9.]*) fail "Endpoint host in $WG_CONFIG is '$conf_ip', not a numeric IPv4 address. This gateway performs no DNS outside the tunnel by design — resolve the hostname yourself and either put the IP in the config or set VPN_ENDPOINT_IP/VPN_ENDPOINT_PORT." ;;
+    *[!0-9.]*)
+      # Hostname endpoint: resolve it ONCE, before the kill switch exists
+      # (the single query uses the container's boot-time resolver, i.e. the
+      # host path — equivalent metadata to the handshake itself). If the
+      # config is writable, the hostname line is commented out and the
+      # literal IP written beneath it, so every later boot does zero DNS.
+      echo "vpn-entrypoint: Endpoint '$conf_ip' is a hostname; resolving once (single boot-time query via the host resolver)" >&2
+      resolved="$(nslookup "$conf_ip" 2>/dev/null | awk '/^Address/ { if ($2 !~ /:/) { print $2; exit } }')"
+      case "$resolved" in
+        *[!0-9.]*|"") fail "could not resolve Endpoint hostname '$conf_ip' to an IPv4 address. Resolve it yourself and either put the IP in $WG_CONFIG or set VPN_ENDPOINT_IP/VPN_ENDPOINT_PORT." ;;
+      esac
+      tmp="$(dirname "$WG_CONFIG")/.endpoint-rewrite.tmp"
+      if printf '' >"$tmp" 2>/dev/null; then
+        awk -v ip="$resolved" -v port="$conf_port" '
+          /^Endpoint[ \t]*=/ {
+            print "# " $0
+            print "# resolved by the gateway (one-time lookup); to re-resolve, restore the hostname line above"
+            print "Endpoint = " ip ":" port
+            next
+          }
+          { print }
+        ' "$WG_CONFIG" >"$tmp" && mv "$tmp" "$WG_CONFIG"
+        echo "vpn-entrypoint: pinned Endpoint $resolved:$conf_port into $WG_CONFIG (hostname line kept, commented)" >&2
+      else
+        rm -f "$tmp" 2>/dev/null || true
+        # Refusing to run on an unpinnable hostname: per-boot re-resolution
+        # would silently depend on boot-time DNS forever and could rotate
+        # the pinned IP. Fail fast, with the answer ready to paste.
+        fail "$WG_CONFIG is read-only, so the resolved endpoint cannot be pinned. Fix once: put 'Endpoint = $resolved:$conf_port' in the config yourself, or mount the config directory writable and the gateway will."
+      fi
+      conf_ip="$resolved"
+      ;;
   esac
   VPN_ENDPOINT_IP="${VPN_ENDPOINT_IP:-$conf_ip}"
   VPN_ENDPOINT_PORT="${VPN_ENDPOINT_PORT:-$conf_port}"

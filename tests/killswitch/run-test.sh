@@ -417,4 +417,62 @@ else
   fail "could not recreate vpn with KILLSWITCH=off"
 fi
 
+
+# --- Hostname endpoint: resolved once and pinned into a writable config ---
+
+sed 's|^Endpoint.*|Endpoint = wg-test-server:51820|' \
+  "$TEST_DIR/fixtures/vpn-client/wg0.conf" >"$TEST_DIR/runtime/wireguard/wg0.conf"
+
+# shellcheck disable=SC2086
+if TEST_WG_MODE=rw $COMPOSE up -d --force-recreate vpn >/dev/null 2>&1; then
+  hostready=0
+  i=0
+  while [ "$i" -lt 30 ]; do
+    if run_vpn curl --interface "$VPN_INTERFACE" -fsS4 --max-time 5 "$FAKE_URL" >/dev/null 2>&1; then
+      hostready=1
+      break
+    fi
+    i=$((i + 1))
+    sleep 2
+  done
+  if [ "$hostready" -eq 1 ]; then
+    pass "hostname endpoint: tunnel up after one-time resolution"
+  else
+    fail "hostname endpoint: tunnel did not come up"
+  fi
+
+  if grep -q '^# Endpoint = wg-test-server:51820' "$TEST_DIR/runtime/wireguard/wg0.conf" &&
+     grep -q '^Endpoint = 10.77.10.200:51820' "$TEST_DIR/runtime/wireguard/wg0.conf"; then
+    pass "hostname endpoint: config rewritten (hostname commented, literal IP pinned)"
+  else
+    fail "hostname endpoint: config was not rewritten as expected"
+  fi
+
+  if [ "$(run_vpn cat /run/vpn/endpoint_ip 2>/dev/null | tr -d '\r\n')" = "10.77.10.200" ]; then
+    pass "hostname endpoint: firewall pinned to the resolved IP"
+  else
+    fail "hostname endpoint: endpoint fact does not match the resolved IP"
+  fi
+else
+  fail "could not recreate vpn with a writable hostname config"
+fi
+
+# --- Hostname endpoint on a READ-ONLY config: must fail fast and loud ---
+
+sed 's|^Endpoint.*|Endpoint = wg-test-server:51820|' \
+  "$TEST_DIR/fixtures/vpn-client/wg0.conf" >"$TEST_DIR/runtime/wireguard/wg0.conf"
+
+# shellcheck disable=SC2086
+$COMPOSE up -d --force-recreate vpn >/dev/null 2>&1
+sleep 4
+# shellcheck disable=SC2086
+if $COMPOSE logs vpn 2>/dev/null | grep -q "read-only, so the resolved endpoint cannot be pinned" &&
+   $COMPOSE logs vpn 2>/dev/null | grep -q "Endpoint = 10.77.10.200:51820"; then
+  pass "read-only hostname config fails fast, with the resolved IP ready to paste"
+else
+  fail "read-only hostname config did not fail with the expected guidance"
+fi
+# shellcheck disable=SC2086
+$COMPOSE stop vpn >/dev/null 2>&1 || true
+
 [ "$fail_count" -eq 0 ] || exit 1

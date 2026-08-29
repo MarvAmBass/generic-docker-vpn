@@ -88,7 +88,7 @@ no VPN account, no real network access needed.
 | Variable | Default | Meaning |
 |---|---|---|
 | `KILLSWITCH` | `on` | `on` or `off` (exact match). See below. |
-| `VPN_ENDPOINT_IP` | *derived* | Numeric IPv4 of your provider endpoint. Optional: derived from the `Endpoint` line in `wg0.conf`; set to override. Hostname endpoints are rejected either way (no DNS outside the tunnel) |
+| `VPN_ENDPOINT_IP` | *derived* | Optional: derived from the `Endpoint` line in `wg0.conf`; set to override. A hostname endpoint is resolved ONCE at first boot (single host-path query, before the kill switch exists) and pinned into the config as a literal IP — the hostname line is kept, commented. If the config is read-only and can't be pinned, the gateway fails fast with the resolved IP ready to paste. After pinning: zero DNS outside the tunnel, ever |
 | `VPN_ENDPOINT_PORT` | *derived* | Endpoint UDP port (same derivation/override rules) |
 | `VPN_INTERFACE` | `wg0` | Tunnel interface / config file name (`/etc/wireguard/<name>.conf`) |
 | `VPN_DNS` | `1.1.1.1` | Resolver used inside the namespace, reached through the tunnel |

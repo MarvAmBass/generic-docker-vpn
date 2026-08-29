@@ -31,7 +31,7 @@ services:
     volumes:
       # runtime/wireguard is seeded from fixtures/ by run-test.sh so the
       # hot-reload test can write forwarded_port without dirtying fixtures.
-      - ./runtime/wireguard:/etc/wireguard:ro
+      - ./runtime/wireguard:/etc/wireguard:${TEST_WG_MODE:-ro}
       - ./fixtures/hooks:/hooks:ro
     networks:
       - lan
